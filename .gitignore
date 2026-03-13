@@ -1,0 +1,5 @@
+search-engine
+*.exe
+*.test
+*.out
+.DS_Store
