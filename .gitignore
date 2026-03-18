@@ -1,5 +1,7 @@
 search-engine
+/crawler
 *.exe
 *.test
 *.out
 .DS_Store
+crawl_state_*.json
