@@ -66,18 +66,48 @@ A concurrent web crawler and real-time search engine built in Go using only the 
    - Real-time dashboard at `/dashboard`
    - REST API for search, status, and crawler lifecycle
 
+## Prerequisites
+
+- **Go 1.22+** — [Download and install](https://go.dev/dl/)
+- **Git** (optional) — only needed if cloning from GitHub
+
+Verify Go is installed:
+
+```bash
+go version
+# go version go1.22.0 (or newer)
+```
+
+## Installation
+
+**Option A — Clone from GitHub:**
+
+```bash
+git clone https://github.com/ceydaakin/google-in-a-day.git
+cd google-in-a-day
+```
+
+**Option B — From ZIP:**
+
+```bash
+unzip google-in-a-day.zip
+cd google-in-a-day
+```
+
 ## Quick Start
 
 ```bash
-# Build
+# 1. Build the binary
 go build -o search-engine ./cmd/crawler
 
-# Run with a seed URL (CLI mode)
+# 2a. Run with a seed URL (starts crawling immediately)
 ./search-engine --url https://golang.org --depth 2 --workers 5
+# Search UI:  http://localhost:8080
+# Dashboard:  http://localhost:8080/dashboard
 
-# Or run without a URL and use the dashboard to start crawling
+# 2b. Or run without a URL and start crawling from the dashboard
 ./search-engine --port 8080
-# Then open http://localhost:8080/dashboard
+# Open http://localhost:8080/dashboard and use the "Start Crawl" form
 ```
 
 ## Usage
@@ -110,10 +140,13 @@ Start without a URL and use the web dashboard:
 The dashboard provides:
 - **Start Crawl** form — enter URL, depth, workers, queue size
 - **Real-time metrics** — URLs processed, queued, dropped, errors, active workers
+- **Progress bar** — visual indicator of crawl completion
 - **Pause/Resume/Stop** controls
 - **Worker status** table showing what each goroutine is doing
 - **Crawl history** — last 20 URLs with status codes and durations
 - **Back pressure indicator** — count of dropped URLs and back pressure events
+
+The frontend uses a separated design system (`web/static/css/style.css`) with CSS custom properties, embedded into the binary via Go's `embed` package for single-binary deployment.
 
 ### Search
 
@@ -295,12 +328,21 @@ go run -race ./cmd/crawler --url https://golang.org --depth 1
 │   │   └── result.go               # SearchResult + sorting
 │   └── server/
 │       ├── api.go                  # REST API handlers (lifecycle + save state)
-│       ├── dashboard.go            # Dashboard HTML template
-│       ├── server.go               # HTTP server wiring
+│       ├── dashboard.go            # Dashboard HTML layout
+│       ├── server.go               # HTTP server wiring + static file serving
 │       ├── server_test.go          # HTTP handler tests
-│       └── templates.go            # Search UI HTML templates
+│       └── templates.go            # Search UI HTML layouts
+├── web/
+│   ├── embed.go                    # Embeds static assets into the binary
+│   └── static/
+│       ├── css/
+│       │   └── style.css           # Design system (variables, components, responsive)
+│       └── js/
+│           ├── home.js             # Home page stats bar
+│           └── dashboard.js        # Dashboard polling, controls, metrics
 ├── product_prd.md                  # Product Requirement Document
 ├── recommendation.md               # Production roadmap
+├── ai_stewardship_notes.md         # AI design decisions & justifications (17 Q&A)
 ├── readme.md                       # This file
-└── go.mod
+└── go.mod                          # Zero external dependencies
 ```

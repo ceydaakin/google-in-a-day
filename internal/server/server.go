@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"log"
 	"net/http"
 
 	"github.com/ceydaakin/google-in-a-day/internal/crawler"
 	"github.com/ceydaakin/google-in-a-day/internal/index"
+	"github.com/ceydaakin/google-in-a-day/web"
 )
 
 // Server serves the search HTTP interface and dashboard.
@@ -25,6 +27,10 @@ func New(c *crawler.Crawler, idx *index.Index, addr string) *Server {
 	s := &Server{crawler: c, idx: idx, addr: addr}
 
 	mux := http.NewServeMux()
+
+	// Static assets (CSS, JS) embedded in binary
+	staticFS, _ := fs.Sub(web.Static, "static")
+	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
 
 	// Search UI
 	mux.HandleFunc("/", s.handleHome)
