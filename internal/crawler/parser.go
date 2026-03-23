@@ -1,21 +1,27 @@
 package crawler
 
 import (
+	"html"
 	"io"
 	"net/url"
 	"strings"
 )
 
+// maxPageSize limits how much of a page we read to prevent OOM on very large documents.
+const maxPageSize = 5 * 1024 * 1024 // 5 MB
+
 // parsePage extracts the title, body text, and links from raw HTML.
 // Uses only the Go standard library — no external HTML parsers.
+// Reads at most 5 MB per page to bound memory usage on large crawls.
 func parsePage(body io.Reader, baseURL *url.URL) (title string, text string, links []string) {
-	data, err := io.ReadAll(body)
+	data, err := io.ReadAll(io.LimitReader(body, maxPageSize))
 	if err != nil {
 		return "", "", nil
 	}
 	html := string(data)
 
-	title = extractBetweenTags(html, "title")
+	rawTitle := extractBetweenTags(html, "title")
+	title = cleanText(rawTitle)
 	bodyContent := extractBetweenTags(html, "body")
 	if bodyContent == "" {
 		bodyContent = html
@@ -24,6 +30,13 @@ func parsePage(body io.Reader, baseURL *url.URL) (title string, text string, lin
 	text = stripTags(bodyContent)
 	links = extractLinks(html, baseURL)
 	return title, text, links
+}
+
+// cleanText decodes HTML entities and normalizes whitespace.
+func cleanText(s string) string {
+	decoded := html.UnescapeString(s)
+	fields := strings.Fields(decoded)
+	return strings.Join(fields, " ")
 }
 
 // extractBetweenTags extracts text content between the first occurrence of <tag> and </tag>.
@@ -188,6 +201,10 @@ func resolveURL(href string, base *url.URL) string {
 	if href == "" || strings.HasPrefix(href, "#") || strings.HasPrefix(href, "javascript:") || strings.HasPrefix(href, "mailto:") {
 		return ""
 	}
+	// Skip JavaScript template expressions that get misidentified as links
+	if strings.ContainsAny(href, "'{}`") {
+		return ""
+	}
 
 	parsed, err := url.Parse(href)
 	if err != nil {
@@ -200,5 +217,10 @@ func resolveURL(href string, base *url.URL) string {
 	}
 
 	resolved.Fragment = ""
-	return resolved.String()
+	result := resolved.String()
+	// Normalize: strip trailing slash for deduplication (except root "/")
+	if len(result) > 1 && strings.HasSuffix(result, "/") {
+		result = strings.TrimRight(result, "/")
+	}
+	return result
 }

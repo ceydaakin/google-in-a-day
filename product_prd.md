@@ -42,7 +42,7 @@ Build a functional mini search engine that demonstrates:
 | ID | Requirement | Priority | Status |
 |----|-------------|----------|--------|
 | FR-12 | Accept a keyword query from the user | Must | Done |
-| FR-13 | Return a list of triples: `(relevant_url, origin_url, depth)` | Must | Done |
+| FR-13 | Return a list of triples: `(relevant_url, origin_url, depth)` where depth is the `k` parameter passed to index | Must | Done |
 | FR-14 | Search must work while the indexer is still actively crawling (live indexing) | Must | Done |
 | FR-15 | Rank results using a relevancy heuristic (keyword frequency + title match bonus) | Must | Done |
 | FR-16 | Thread-safe read access to the index concurrent with write access from the crawler | Must | Done |
@@ -140,8 +140,9 @@ type CrawlTask struct {
 // Document — indexed page
 type Document struct {
     URL, OriginURL string
-    Depth          int
-    Title, Body    string
+    Depth          int            // actual hop count from origin
+    MaxDepth       int            // k parameter passed to /index
+    Title          string
     WordFreq       map[string]int
 }
 
@@ -231,3 +232,6 @@ Three independent layers:
 | JSON persistence (not database) | Assignment scope — simple, portable, stdlib-compatible |
 | Metrics snapshot pattern | Immutable copies prevent data races in dashboard rendering |
 | Workers poll state for pause | Simpler than channel replacement; avoids channel recreation races |
+| URL normalization (trailing slash) | Prevents `/about` and `/about/` from being crawled as separate pages |
+| Body size limit (5 MB) | Bounds memory per page; prevents OOM on very large documents |
+| Search depth = k parameter | Triple's `depth` is the `k` passed to `/index`, identifying which crawl found the result |

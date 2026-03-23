@@ -21,6 +21,7 @@ func TestSaveAndLoadState(t *testing.T) {
 				URL:       "https://example.com",
 				OriginURL: "https://example.com",
 				Depth:     0,
+				MaxDepth:  2,
 				Title:     "Test",
 				Body:      "Hello world",
 				WordFreq:  map[string]int{"hello": 1, "world": 1},

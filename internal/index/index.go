@@ -70,7 +70,7 @@ func (idx *Index) searchSingle(keyword string) []SearchResult {
 		results = append(results, SearchResult{
 			RelevantURL: doc.URL,
 			OriginURL:   doc.OriginURL,
-			Depth:       doc.Depth,
+			Depth:       doc.MaxDepth,
 			Score:       score,
 			Title:       doc.Title,
 		})
@@ -132,7 +132,7 @@ func (idx *Index) searchMulti(keywords []string) []SearchResult {
 		results = append(results, SearchResult{
 			RelevantURL: doc.URL,
 			OriginURL:   doc.OriginURL,
-			Depth:       doc.Depth,
+			Depth:       doc.MaxDepth,
 			Score:       score,
 			Title:       doc.Title,
 		})
@@ -164,6 +164,7 @@ func (idx *Index) AllDocuments() []Document {
 			URL:       doc.URL,
 			OriginURL: doc.OriginURL,
 			Depth:     doc.Depth,
+			MaxDepth:  doc.MaxDepth,
 			Title:     doc.Title,
 			Body:      doc.Body,
 			WordFreq:  wordFreq,

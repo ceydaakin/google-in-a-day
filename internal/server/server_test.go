@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -64,7 +65,7 @@ func TestSearchRedirect(t *testing.T) {
 func TestSearchWithQuery(t *testing.T) {
 	srv := newTestServer()
 	srv.idx.Add(&index.Document{
-		URL: "https://example.com", Title: "Test",
+		URL: "https://example.com", Title: "Test", MaxDepth: 2,
 		WordFreq: map[string]int{"test": 1},
 	})
 
@@ -75,7 +76,7 @@ func TestSearchWithQuery(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("expected 200, got %d", w.Code)
 	}
-	if !strings.Contains(w.Body.String(), "1 results found") {
+	if !strings.Contains(w.Body.String(), "1 results") {
 		t.Error("expected results in page")
 	}
 }
@@ -95,7 +96,7 @@ func TestAPISearchJSON(t *testing.T) {
 	srv := newTestServer()
 	srv.idx.Add(&index.Document{
 		URL: "https://example.com", OriginURL: "https://seed.com",
-		Depth: 1, Title: "Go Tutorial",
+		Depth: 1, MaxDepth: 2, Title: "Go Tutorial",
 		WordFreq: map[string]int{"go": 5},
 	})
 
@@ -120,7 +121,7 @@ func TestAPISearchJSON(t *testing.T) {
 func TestAPIStats(t *testing.T) {
 	srv := newTestServer()
 	srv.idx.Add(&index.Document{
-		URL: "https://a.com", WordFreq: map[string]int{"go": 1},
+		URL: "https://a.com", MaxDepth: 2, WordFreq: map[string]int{"go": 1},
 	})
 
 	req := httptest.NewRequest("GET", "/api/stats", nil)
@@ -175,7 +176,7 @@ func TestAPIStopNotRunning(t *testing.T) {
 
 func TestAPIStartMissingURL(t *testing.T) {
 	srv := newTestServer()
-	body := strings.NewReader(`{"url":""}`)
+	body := strings.NewReader(`{"origin":""}`)
 	req := httptest.NewRequest("POST", "/api/index", body)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -254,7 +255,7 @@ func TestAPIStartValidURL(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	body := strings.NewReader(`{"url":"` + ts.URL + `","depth":0}`)
+	body := strings.NewReader(`{"origin":"` + ts.URL + `","k":0}`)
 	req := httptest.NewRequest("POST", "/api/index", body)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -272,6 +273,173 @@ func TestAPIStartValidURL(t *testing.T) {
 
 	// Wait for crawler to finish
 	time.Sleep(500 * time.Millisecond)
+}
+
+func TestAPIStartInvalidURLScheme(t *testing.T) {
+	srv := newTestServer()
+	body := strings.NewReader(`{"origin":"not-a-url"}`)
+	req := httptest.NewRequest("POST", "/api/index", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.handleStartCrawl(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for URL without scheme, got %d", w.Code)
+	}
+}
+
+func TestAPIStartFTPScheme(t *testing.T) {
+	srv := newTestServer()
+	body := strings.NewReader(`{"origin":"ftp://example.com"}`)
+	req := httptest.NewRequest("POST", "/api/index", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.handleStartCrawl(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for ftp scheme, got %d", w.Code)
+	}
+}
+
+func TestAPISearchReturnsMaxDepth(t *testing.T) {
+	srv := newTestServer()
+	srv.idx.Add(&index.Document{
+		URL: "https://example.com", OriginURL: "https://seed.com",
+		Depth: 1, MaxDepth: 5, Title: "Go",
+		WordFreq: map[string]int{"go": 3},
+	})
+
+	req := httptest.NewRequest("GET", "/api/search?q=go", nil)
+	w := httptest.NewRecorder()
+	srv.handleAPISearch(w, req)
+
+	var results []map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &results)
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	depth := int(results[0]["depth"].(float64))
+	if depth != 5 {
+		t.Errorf("expected depth=5 (k parameter), got %d", depth)
+	}
+}
+
+func TestAPISearchNoResults(t *testing.T) {
+	srv := newTestServer()
+	req := httptest.NewRequest("GET", "/api/search?q=nonexistent", nil)
+	w := httptest.NewRecorder()
+	srv.handleAPISearch(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+}
+
+func TestSearchPageNoResults(t *testing.T) {
+	srv := newTestServer()
+	req := httptest.NewRequest("GET", "/search?q=nothing", nil)
+	w := httptest.NewRecorder()
+	srv.handleSearch(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "No results found") {
+		t.Error("expected 'No results found' message")
+	}
+}
+
+func TestStartAndShutdown(t *testing.T) {
+	srv := newTestServer()
+	srv.addr = ":0" // random port
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- srv.Start()
+	}()
+
+	// Wait for server to be ready
+	time.Sleep(100 * time.Millisecond)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		t.Errorf("shutdown error: %v", err)
+	}
+
+	err := <-errCh
+	if err != nil && err.Error() != "http: Server closed" {
+		t.Errorf("unexpected start error: %v", err)
+	}
+}
+
+func TestAPISaveStateSuccess(t *testing.T) {
+	srv := newTestServer()
+
+	// Start and complete a crawl against a test server
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte("<html><body>test page</body></html>"))
+	}))
+	defer ts.Close()
+
+	// Start crawler and wait for completion (depth=0 = seed only)
+	srv.crawler.SetMaxDepth(0)
+	if err := srv.crawler.Start(ts.URL); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+	srv.crawler.Wait()
+
+	// Now save state (crawler should be in completed state)
+	req := httptest.NewRequest("POST", "/api/save", nil)
+	w := httptest.NewRecorder()
+	srv.handleSaveState(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d; body: %s", w.Code, w.Body.String())
+	}
+
+	var resp apiResponse
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if !resp.Success {
+		t.Errorf("expected success=true, got error: %s", resp.Error)
+	}
+}
+
+func TestAPIStartAlreadyRunning(t *testing.T) {
+	srv := newTestServer()
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		time.Sleep(200 * time.Millisecond)
+		w.Write([]byte("<html><body><a href=\"/page1\">link</a></body></html>"))
+	}))
+	defer ts.Close()
+
+	// Start first crawl
+	body1 := strings.NewReader(`{"origin":"` + ts.URL + `","k":2}`)
+	req1 := httptest.NewRequest("POST", "/api/index", body1)
+	req1.Header.Set("Content-Type", "application/json")
+	w1 := httptest.NewRecorder()
+	srv.handleStartCrawl(w1, req1)
+
+	if w1.Code != http.StatusOK {
+		t.Fatalf("first start expected 200, got %d", w1.Code)
+	}
+
+	// Try to start again — should get 409
+	body2 := strings.NewReader(`{"origin":"` + ts.URL + `","k":1}`)
+	req2 := httptest.NewRequest("POST", "/api/index", body2)
+	req2.Header.Set("Content-Type", "application/json")
+	w2 := httptest.NewRecorder()
+	srv.handleStartCrawl(w2, req2)
+
+	if w2.Code != http.StatusConflict {
+		t.Errorf("expected 409 for duplicate start, got %d", w2.Code)
+	}
+
+	srv.crawler.Stop()
+	srv.crawler.Wait()
 }
 
 func TestAPIMethodNotAllowed(t *testing.T) {

@@ -154,12 +154,14 @@ curl "http://localhost:8080/api/search?q=go+concurrency"
   {
     "relevant_url": "https://golang.org/doc/effective_go",
     "origin_url": "https://golang.org",
-    "depth": 1,
+    "depth": 2,
     "score": 15.0,
     "title": "Effective Go"
   }
 ]
 ```
+
+> **Note:** `depth` in the triple is the `k` parameter passed to `/api/index`, not the hop count at which the page was discovered. Together with `origin_url`, it identifies which index call found the result.
 
 ### Index Stats
 
@@ -173,7 +175,7 @@ curl "http://localhost:8080/api/search?q=go+concurrency"
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/index` | POST | Start crawling `{"url": "...", "depth": 2}` |
+| `/api/index` | POST | Start crawling `{"origin": "...", "k": 2}` |
 | `/api/status` | GET | Rich status with metrics, workers, history |
 | `/api/pause` | POST | Pause the crawler |
 | `/api/resume` | POST | Resume a paused crawler |
@@ -207,6 +209,16 @@ curl "http://localhost:8080/api/search?q=go+concurrency"
   "keywords": 1842
 }
 ```
+
+## Concurrent Search During Indexing
+
+Search runs concurrently with crawling from the moment the server starts. This is possible because the inverted index is protected by a `sync.RWMutex`:
+
+- **Write path** (crawler): Acquires an exclusive write lock when adding a new document. Only one writer at a time.
+- **Read path** (search): Acquires a shared read lock. Multiple searches execute simultaneously without blocking each other.
+- **Consistency**: A search sees all documents indexed before the read lock was acquired. Documents being added concurrently appear in the next search.
+
+This design means search latency is unaffected by crawl activity, and crawl throughput is unaffected by search queries (except for brief lock hand-offs during document insertion).
 
 ## Concurrency Design
 

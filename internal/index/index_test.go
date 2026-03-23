@@ -10,6 +10,7 @@ func newTestDoc(url, title string, wordFreq map[string]int) *Document {
 		URL:       url,
 		OriginURL: "https://origin.com",
 		Depth:     1,
+		MaxDepth:  3,
 		Title:     title,
 		WordFreq:  wordFreq,
 	}
@@ -190,11 +191,28 @@ func TestAllDocumentsDeepCopy(t *testing.T) {
 	}
 }
 
+func TestSearchReturnsMaxDepthInTriple(t *testing.T) {
+	idx := New()
+	idx.Add(&Document{
+		URL: "https://example.com", OriginURL: "https://seed.com",
+		Depth: 1, MaxDepth: 5, Title: "Test",
+		WordFreq: map[string]int{"test": 1},
+	})
+
+	results := idx.Search("test")
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Depth != 5 {
+		t.Errorf("expected Depth=5 (MaxDepth/k parameter), got %d", results[0].Depth)
+	}
+}
+
 func TestLoadDocuments(t *testing.T) {
 	idx := New()
 	docs := []Document{
-		{URL: "https://a.com", OriginURL: "https://seed.com", Depth: 0, Title: "A", WordFreq: map[string]int{"hello": 1}},
-		{URL: "https://b.com", OriginURL: "https://seed.com", Depth: 1, Title: "B", WordFreq: map[string]int{"world": 1}},
+		{URL: "https://a.com", OriginURL: "https://seed.com", Depth: 0, MaxDepth: 2, Title: "A", WordFreq: map[string]int{"hello": 1}},
+		{URL: "https://b.com", OriginURL: "https://seed.com", Depth: 1, MaxDepth: 2, Title: "B", WordFreq: map[string]int{"world": 1}},
 	}
 	idx.LoadDocuments(docs)
 

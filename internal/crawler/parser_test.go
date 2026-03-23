@@ -101,6 +101,33 @@ func TestExtractLinksRelative(t *testing.T) {
 	}
 }
 
+func TestCleanText(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"\r\n\tİT&#220; | Test\r", "İTÜ | Test"},
+		{"  Hello   World  ", "Hello World"},
+		{"&#252;niversite", "üniversite"},
+		{"&amp; test", "& test"},
+	}
+	for _, tt := range tests {
+		got := cleanText(tt.input)
+		if got != tt.want {
+			t.Errorf("cleanText(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestExtractLinksFiltersJSTemplates(t *testing.T) {
+	html := `<a href="' + item.url + '">JS</a><a href="https://real.com">Real</a>`
+	base := mustParseURL("https://example.com")
+	links := extractLinks(html, base)
+	if len(links) != 1 || links[0] != "https://real.com" {
+		t.Errorf("expected only real link, got %v", links)
+	}
+}
+
 func TestExtractLinksFiltersFragments(t *testing.T) {
 	html := `<a href="#section">Skip</a><a href="javascript:void(0)">JS</a><a href="mailto:a@b.com">Mail</a>`
 	base := mustParseURL("https://example.com")
@@ -129,6 +156,7 @@ func TestResolveURL(t *testing.T) {
 		{"https://other.com", "https://other.com"},
 		{"/absolute", "https://example.com/absolute"},
 		{"relative", "https://example.com/dir/relative"},
+		{"/about/", "https://example.com/about"},  // trailing slash normalized
 		{"#frag", ""},
 		{"javascript:alert(1)", ""},
 		{"mailto:a@b.com", ""},

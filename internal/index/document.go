@@ -5,6 +5,7 @@ type Document struct {
 	URL       string         `json:"url"`
 	OriginURL string         `json:"origin_url"`
 	Depth     int            `json:"depth"`
+	MaxDepth  int            `json:"max_depth"`
 	Title     string         `json:"title"`
 	Body      string         `json:"body"`
 	WordFreq  map[string]int `json:"word_freq"`

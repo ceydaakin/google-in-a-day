@@ -20,13 +20,10 @@ type Server struct {
 	httpSrv *http.Server
 }
 
-// New creates a new search server.
+// New creates a new search server with routes pre-registered.
 func New(c *crawler.Crawler, idx *index.Index, addr string) *Server {
-	return &Server{crawler: c, idx: idx, addr: addr}
-}
+	s := &Server{crawler: c, idx: idx, addr: addr}
 
-// Start begins listening. Call this in a goroutine.
-func (s *Server) Start() error {
 	mux := http.NewServeMux()
 
 	// Search UI
@@ -47,6 +44,11 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/save", s.handleSaveState)
 
 	s.httpSrv = &http.Server{Addr: s.addr, Handler: mux}
+	return s
+}
+
+// Start begins listening. Call this in a goroutine.
+func (s *Server) Start() error {
 	log.Printf("Search server listening on %s", s.addr)
 	log.Printf("Dashboard: http://localhost%s/dashboard", s.addr)
 	return s.httpSrv.ListenAndServe()
@@ -54,9 +56,6 @@ func (s *Server) Start() error {
 
 // Shutdown gracefully shuts down the HTTP server.
 func (s *Server) Shutdown(ctx context.Context) error {
-	if s.httpSrv == nil {
-		return nil
-	}
 	return s.httpSrv.Shutdown(ctx)
 }
 

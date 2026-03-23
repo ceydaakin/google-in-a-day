@@ -73,6 +73,7 @@ func (c *Crawler) Start(seedURL string) error {
 	}
 
 	c.seedURL = seedURL
+	c.visited = sync.Map{} // Reset visited set for each new crawl
 	c.frontier = make(chan CrawlTask, c.config.QueueSize)
 	c.stopCh = make(chan struct{})
 	c.doneCh = make(chan struct{})
@@ -307,8 +308,8 @@ func (c *Crawler) processTask(id int, task CrawlTask) {
 		URL:       task.URL,
 		OriginURL: task.OriginURL,
 		Depth:     task.Depth,
+		MaxDepth:  c.config.MaxDepth,
 		Title:     title,
-		Body:      bodyText,
 		WordFreq:  wordFreq,
 	}
 	c.idx.Add(doc)

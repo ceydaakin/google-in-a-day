@@ -34,10 +34,8 @@ func (s *Server) handleStartCrawl(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		URL       string `json:"url"`
-		Depth     int    `json:"depth"`
-		Workers   int    `json:"workers"`
-		QueueSize int    `json:"queue_size"`
+		Origin string `json:"origin"` // seed URL (spec parameter name)
+		K      int    `json:"k"`      // max crawl depth (spec parameter name)
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -45,29 +43,29 @@ func (s *Server) handleStartCrawl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.URL == "" {
-		writeJSON(w, http.StatusBadRequest, apiResponse{Error: "url is required"})
+	if req.Origin == "" {
+		writeJSON(w, http.StatusBadRequest, apiResponse{Error: "origin is required"})
 		return
 	}
 
-	if _, err := url.Parse(req.URL); err != nil {
-		writeJSON(w, http.StatusBadRequest, apiResponse{Error: "invalid URL"})
+	parsed, err := url.Parse(req.Origin)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		writeJSON(w, http.StatusBadRequest, apiResponse{Error: "invalid origin: must start with http:// or https://"})
 		return
 	}
 
-	// Apply overrides if provided; otherwise use server defaults
-	if req.Depth > 0 {
-		s.crawler.SetMaxDepth(req.Depth)
+	if req.K > 0 {
+		s.crawler.SetMaxDepth(req.K)
 	}
 
-	if err := s.crawler.Start(req.URL); err != nil {
+	if err := s.crawler.Start(req.Origin); err != nil {
 		writeJSON(w, http.StatusConflict, apiResponse{Error: err.Error()})
 		return
 	}
 
 	writeJSON(w, http.StatusOK, apiResponse{
 		Success: true,
-		Data:    map[string]string{"status": "started", "seed_url": req.URL},
+		Data:    map[string]string{"status": "started", "origin": req.Origin},
 	})
 }
 
