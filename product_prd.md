@@ -42,7 +42,7 @@ Build a functional mini search engine that demonstrates:
 | ID | Requirement | Priority | Status |
 |----|-------------|----------|--------|
 | FR-12 | Accept a keyword query from the user | Must | Done |
-| FR-13 | Return a list of triples: `(relevant_url, origin_url, depth)` where depth is the `k` parameter passed to index | Must | Done |
+| FR-13 | Return a list of triples: `(relevant_url, origin_url, depth)` where depth is the actual crawl depth (hops from origin) | Must | Done |
 | FR-14 | Search must work while the indexer is still actively crawling (live indexing) | Must | Done |
 | FR-15 | Rank results using a relevancy heuristic (keyword frequency + title match bonus) | Must | Done |
 | FR-16 | Thread-safe read access to the index concurrent with write access from the crawler | Must | Done |
@@ -168,11 +168,19 @@ type CrawlState int32  // Idle → Running ⇄ Paused → Stopped/Completed
 
 Score for a document given a query:
 ```
-single-word: score = word_frequency(keyword) + title_match_bonus(+10)
-multi-word:  score = Σ word_frequency(keyword_i) + Σ title_match_bonus(keyword_i)
+single-word: score = (frequency × 10) + 1000 − (depth × 5)
+multi-word:  score = (Σ frequency_i × 10) + 1000 − (depth × 5)
 ```
+
+| Component | Description |
+|-----------|-------------|
+| `frequency × 10` | Higher word frequency = more relevant |
+| `+ 1000` | Exact keyword match bonus |
+| `− depth × 5` | Penalty for pages farther from the seed URL |
+
 - Multi-word uses AND semantics — only documents containing ALL keywords are returned
-- Results are sorted by combined score descending
+- For multi-word queries, the combined frequency of all keywords is used
+- Results are sorted by score descending
 
 ## 9. Back Pressure Strategy
 
@@ -234,4 +242,4 @@ Three independent layers:
 | Workers poll state for pause | Simpler than channel replacement; avoids channel recreation races |
 | URL normalization (trailing slash) | Prevents `/about` and `/about/` from being crawled as separate pages |
 | Body size limit (5 MB) | Bounds memory per page; prevents OOM on very large documents |
-| Search depth = k parameter | Triple's `depth` is the `k` passed to `/index`, identifying which crawl found the result |
+| Search depth = crawl depth | Triple's `depth` is the actual hop count from seed URL, reflecting how deep the page was discovered |
