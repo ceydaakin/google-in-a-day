@@ -301,7 +301,7 @@ func TestAPIStartFTPScheme(t *testing.T) {
 	}
 }
 
-func TestAPISearchReturnsMaxDepth(t *testing.T) {
+func TestAPISearchReturnsActualDepth(t *testing.T) {
 	srv := newTestServer()
 	srv.idx.Add(&index.Document{
 		URL: "https://example.com", OriginURL: "https://seed.com",
@@ -319,8 +319,42 @@ func TestAPISearchReturnsMaxDepth(t *testing.T) {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
 	depth := int(results[0]["depth"].(float64))
-	if depth != 5 {
-		t.Errorf("expected depth=5 (k parameter), got %d", depth)
+	if depth != 1 {
+		t.Errorf("expected depth=1 (actual crawl depth), got %d", depth)
+	}
+	relevanceScore := results[0]["relevance_score"].(float64)
+	// score = (3*10) + 1000 - (1*5) = 1025
+	if relevanceScore != 1025 {
+		t.Errorf("expected relevance_score=1025, got %.0f", relevanceScore)
+	}
+}
+
+func TestSearchWithQueryParam(t *testing.T) {
+	srv := newTestServer()
+	srv.idx.Add(&index.Document{
+		URL: "https://example.com", OriginURL: "https://seed.com",
+		Depth: 1, MaxDepth: 2, Title: "Go Page",
+		WordFreq: map[string]int{"go": 5},
+	})
+
+	req := httptest.NewRequest("GET", "/search?query=go&sortBy=relevance", nil)
+	w := httptest.NewRecorder()
+	srv.handleSearch(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+
+	var results []map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &results)
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0]["relevant_url"] != "https://example.com" {
+		t.Errorf("unexpected URL: %v", results[0]["relevant_url"])
+	}
+	if results[0]["relevance_score"] == nil {
+		t.Error("expected relevance_score field in response")
 	}
 }
 

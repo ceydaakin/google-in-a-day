@@ -73,19 +73,19 @@ func TestSearchSortedByScore(t *testing.T) {
 	}
 }
 
-func TestSearchTitleBonus(t *testing.T) {
+func TestSearchFrequencyDominant(t *testing.T) {
 	idx := New()
-	idx.Add(newTestDoc("https://notitle.com", "Other", map[string]int{"go": 5}))
-	idx.Add(newTestDoc("https://titled.com", "Go Programming", map[string]int{"go": 1}))
+	idx.Add(newTestDoc("https://highfreq.com", "Other", map[string]int{"go": 5}))
+	idx.Add(newTestDoc("https://lowfreq.com", "Go Programming", map[string]int{"go": 1}))
 
 	results := idx.Search("go")
 	if len(results) != 2 {
 		t.Fatalf("expected 2 results, got %d", len(results))
 	}
-	// titled.com: score = 1 + 10 (title bonus) = 11
-	// notitle.com: score = 5
-	if results[0].RelevantURL != "https://titled.com" {
-		t.Errorf("expected titled.com first (title bonus), got %s", results[0].RelevantURL)
+	// highfreq.com: score = (5*10) + 1000 - (1*5) = 1045
+	// lowfreq.com:  score = (1*10) + 1000 - (1*5) = 1005
+	if results[0].RelevantURL != "https://highfreq.com" {
+		t.Errorf("expected highfreq.com first (higher frequency), got %s", results[0].RelevantURL)
 	}
 }
 
@@ -191,7 +191,7 @@ func TestAllDocumentsDeepCopy(t *testing.T) {
 	}
 }
 
-func TestSearchReturnsMaxDepthInTriple(t *testing.T) {
+func TestSearchReturnsActualDepthInTriple(t *testing.T) {
 	idx := New()
 	idx.Add(&Document{
 		URL: "https://example.com", OriginURL: "https://seed.com",
@@ -203,8 +203,51 @@ func TestSearchReturnsMaxDepthInTriple(t *testing.T) {
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
-	if results[0].Depth != 5 {
-		t.Errorf("expected Depth=5 (MaxDepth/k parameter), got %d", results[0].Depth)
+	if results[0].Depth != 1 {
+		t.Errorf("expected Depth=1 (actual crawl depth), got %d", results[0].Depth)
+	}
+}
+
+func TestSearchScoringFormula(t *testing.T) {
+	idx := New()
+	idx.Add(&Document{
+		URL: "https://example.com", OriginURL: "https://seed.com",
+		Depth: 2, MaxDepth: 5, Title: "Test",
+		WordFreq: map[string]int{"test": 8},
+	})
+
+	results := idx.Search("test")
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	// score = (8 * 10) + 1000 - (2 * 5) = 80 + 1000 - 10 = 1070
+	expected := 1070.0
+	if results[0].Score != expected {
+		t.Errorf("expected score=%.0f, got %.0f", expected, results[0].Score)
+	}
+}
+
+func TestSearchDepthPenalty(t *testing.T) {
+	idx := New()
+	idx.Add(&Document{
+		URL: "https://shallow.com", OriginURL: "https://seed.com",
+		Depth: 0, MaxDepth: 3, Title: "Shallow",
+		WordFreq: map[string]int{"go": 5},
+	})
+	idx.Add(&Document{
+		URL: "https://deep.com", OriginURL: "https://seed.com",
+		Depth: 3, MaxDepth: 3, Title: "Deep",
+		WordFreq: map[string]int{"go": 5},
+	})
+
+	results := idx.Search("go")
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+	// shallow: (5*10) + 1000 - (0*5) = 1050
+	// deep:    (5*10) + 1000 - (3*5) = 1035
+	if results[0].RelevantURL != "https://shallow.com" {
+		t.Errorf("expected shallow.com first (lower depth penalty), got %s", results[0].RelevantURL)
 	}
 }
 

@@ -77,6 +77,43 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("q")
 	if query == "" {
+		query = r.URL.Query().Get("query")
+	}
+	sortBy := r.URL.Query().Get("sortBy")
+
+	// If query param or sortBy is used, return JSON (API mode)
+	if sortBy != "" || r.URL.Query().Get("query") != "" {
+		if query == "" {
+			http.Error(w, `{"error":"missing query parameter"}`, http.StatusBadRequest)
+			return
+		}
+		results := s.idx.Search(query)
+
+		type ResultJSON struct {
+			RelevantURL    string  `json:"relevant_url"`
+			OriginURL      string  `json:"origin_url"`
+			Depth          int     `json:"depth"`
+			RelevanceScore float64 `json:"relevance_score"`
+			Title          string  `json:"title"`
+		}
+
+		out := make([]ResultJSON, len(results))
+		for i, r := range results {
+			out[i] = ResultJSON{
+				RelevantURL:    r.RelevantURL,
+				OriginURL:      r.OriginURL,
+				Depth:          r.Depth,
+				RelevanceScore: r.Score,
+				Title:          r.Title,
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(out)
+		return
+	}
+
+	if query == "" {
 		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
@@ -105,28 +142,33 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAPISearch(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("q")
 	if query == "" {
-		http.Error(w, `{"error":"missing query parameter 'q'"}`, http.StatusBadRequest)
+		query = r.URL.Query().Get("query")
+	}
+	if query == "" {
+		http.Error(w, `{"error":"missing query parameter 'q' or 'query'"}`, http.StatusBadRequest)
 		return
 	}
 
 	results := s.idx.Search(query)
 
 	type Triple struct {
-		RelevantURL string  `json:"relevant_url"`
-		OriginURL   string  `json:"origin_url"`
-		Depth       int     `json:"depth"`
-		Score       float64 `json:"score"`
-		Title       string  `json:"title"`
+		RelevantURL    string  `json:"relevant_url"`
+		OriginURL      string  `json:"origin_url"`
+		Depth          int     `json:"depth"`
+		Score          float64 `json:"score"`
+		RelevanceScore float64 `json:"relevance_score"`
+		Title          string  `json:"title"`
 	}
 
 	triples := make([]Triple, len(results))
 	for i, r := range results {
 		triples[i] = Triple{
-			RelevantURL: r.RelevantURL,
-			OriginURL:   r.OriginURL,
-			Depth:       r.Depth,
-			Score:       r.Score,
-			Title:       r.Title,
+			RelevantURL:    r.RelevantURL,
+			OriginURL:      r.OriginURL,
+			Depth:          r.Depth,
+			Score:          r.Score,
+			RelevanceScore: r.Score,
+			Title:          r.Title,
 		}
 	}
 

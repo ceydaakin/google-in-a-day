@@ -22,7 +22,7 @@ func main() {
 	queueSize := flag.Int("queue", 100, "Maximum frontier queue size (back pressure)")
 	timeout := flag.Duration("timeout", 10*time.Second, "HTTP request timeout per page")
 	sameDomain := flag.Bool("same-domain", true, "Only crawl pages on the same domain")
-	port := flag.Int("port", 8080, "Search server port")
+	port := flag.Int("port", 3600, "Search server port")
 	rateLimit := flag.Duration("rate-limit", 500*time.Millisecond, "Minimum delay between requests to the same domain")
 	saveState := flag.String("save-state", "", "Path to save crawl state on shutdown")
 	loadState := flag.String("load-state", "", "Path to load previous crawl state from")
@@ -92,6 +92,17 @@ func main() {
 			log.Printf("Warning: failed to save state: %v", err)
 		} else {
 			log.Printf("State saved to %s", *saveState)
+		}
+	}
+
+	// Always save p.data (raw storage format: word url origin depth frequency)
+	docs := idx.AllDocuments()
+	if len(docs) > 0 {
+		pdataPath := "data/storage/p.data"
+		if err := crawler.SavePData(pdataPath, docs); err != nil {
+			log.Printf("Warning: failed to save p.data: %v", err)
+		} else {
+			log.Printf("Raw storage saved to %s (%d documents)", pdataPath, len(docs))
 		}
 	}
 

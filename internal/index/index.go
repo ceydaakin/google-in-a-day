@@ -63,14 +63,12 @@ func (idx *Index) searchSingle(keyword string) []SearchResult {
 
 	results := make([]SearchResult, 0, len(docs))
 	for _, doc := range docs {
-		score := float64(doc.WordFreq[keyword])
-		if strings.Contains(strings.ToLower(doc.Title), keyword) {
-			score += 10
-		}
+		freq := float64(doc.WordFreq[keyword])
+		score := (freq * 10) + 1000 - (float64(doc.Depth) * 5)
 		results = append(results, SearchResult{
 			RelevantURL: doc.URL,
 			OriginURL:   doc.OriginURL,
-			Depth:       doc.MaxDepth,
+			Depth:       doc.Depth,
 			Score:       score,
 			Title:       doc.Title,
 		})
@@ -120,19 +118,17 @@ func (idx *Index) searchMulti(keywords []string) []SearchResult {
 			continue
 		}
 
-		// Combined score across all keywords
-		var score float64
+		// Combined frequency across all keywords
+		var totalFreq float64
 		for _, kw := range keywords {
-			score += float64(doc.WordFreq[kw])
-			if strings.Contains(strings.ToLower(doc.Title), kw) {
-				score += 10
-			}
+			totalFreq += float64(doc.WordFreq[kw])
 		}
+		score := (totalFreq * 10) + 1000 - (float64(doc.Depth) * 5)
 
 		results = append(results, SearchResult{
 			RelevantURL: doc.URL,
 			OriginURL:   doc.OriginURL,
-			Depth:       doc.MaxDepth,
+			Depth:       doc.Depth,
 			Score:       score,
 			Title:       doc.Title,
 		})

@@ -102,12 +102,12 @@ go build -o search-engine ./cmd/crawler
 
 # 2a. Run with a seed URL (starts crawling immediately)
 ./search-engine --url https://golang.org --depth 2 --workers 5
-# Search UI:  http://localhost:8080
-# Dashboard:  http://localhost:8080/dashboard
+# Search UI:  http://localhost:3600
+# Dashboard:  http://localhost:3600/dashboard
 
 # 2b. Or run without a URL and start crawling from the dashboard
-./search-engine --port 8080
-# Open http://localhost:8080/dashboard and use the "Start Crawl" form
+./search-engine --port 3600
+# Open http://localhost:3600/dashboard and use the "Start Crawl" form
 ```
 
 ## Usage
@@ -134,7 +134,7 @@ Start without a URL and use the web dashboard:
 
 ```bash
 ./search-engine --port 8080
-# Open http://localhost:8080/dashboard
+# Open http://localhost:3600/dashboard
 ```
 
 The dashboard provides:
@@ -152,13 +152,13 @@ The frontend uses a separated design system (`web/static/css/style.css`) with CS
 
 ```bash
 # Via browser
-open http://localhost:8080
+open http://localhost:3600
 
 # Single keyword search via API
-curl "http://localhost:8080/api/search?q=goroutine"
+curl "http://localhost:3600/api/search?q=goroutine"
 
 # Multi-word search (AND semantics)
-curl "http://localhost:8080/api/search?q=go+concurrency"
+curl "http://localhost:3600/api/search?q=go+concurrency"
 ```
 
 ### CLI Flags
@@ -171,7 +171,7 @@ curl "http://localhost:8080/api/search?q=go+concurrency"
 | `--queue` | 100 | Frontier queue capacity (back pressure) |
 | `--timeout` | 10s | HTTP request timeout per page |
 | `--same-domain` | true | Restrict crawling to the seed URL's domain |
-| `--port` | 8080 | Search server port |
+| `--port` | 3600 | Search server port |
 | `--rate-limit` | 500ms | Minimum delay between requests to the same domain |
 | `--save-state` | (disabled) | Path to save crawl state on shutdown |
 | `--load-state` | (disabled) | Path to load previous crawl state from |
@@ -194,7 +194,7 @@ curl "http://localhost:8080/api/search?q=go+concurrency"
 ]
 ```
 
-> **Note:** `depth` in the triple is the `k` parameter passed to `/api/index`, not the hop count at which the page was discovered. Together with `origin_url`, it identifies which index call found the result.
+> **Note:** `depth` in the triple is the actual crawl depth (number of hops from the seed URL) at which the page was discovered. `origin_url` identifies the seed URL that initiated the crawl.
 
 ### Index Stats
 
@@ -241,6 +241,68 @@ curl "http://localhost:8080/api/search?q=go+concurrency"
   "docs": 25,
   "keywords": 1842
 }
+```
+
+### Search with Relevance Sorting
+
+**`GET /search?query=<keywords>&sortBy=relevance`** — Returns JSON with `relevance_score`:
+
+```json
+[
+  {
+    "relevant_url": "https://go.dev/doc/effective_go",
+    "origin_url": "https://go.dev",
+    "depth": 1,
+    "relevance_score": 1045,
+    "title": "Effective Go"
+  }
+]
+```
+
+This endpoint supports both `q` and `query` parameters. When `sortBy` is provided, the response is JSON instead of HTML.
+
+## Scoring Formula
+
+Each search result is scored using the following formula:
+
+```
+score = (frequency × 10) + 1000 (exact match bonus) − (depth × 5)
+```
+
+| Component | Description |
+|-----------|-------------|
+| `frequency × 10` | Higher word frequency = more relevant |
+| `+ 1000` | Exact keyword match bonus |
+| `− depth × 5` | Penalty for pages farther from the seed URL |
+
+**Example:** A page at depth 2 with word frequency 8:
+```
+score = (8 × 10) + 1000 − (2 × 5) = 80 + 1000 − 10 = 1070
+```
+
+For multi-word queries, AND semantics are applied (all keywords must appear in the page), and the combined frequency of all keywords is used in the formula.
+
+## Raw Storage Format
+
+On shutdown, the crawler saves the inverted index to `data/storage/p.data` as a flat text file. Each line contains one word-document entry:
+
+```
+word url origin depth frequency
+```
+
+| Field | Description |
+|-------|-------------|
+| `word` | Indexed keyword (lowercase) |
+| `url` | URL of the page where the word was found |
+| `origin` | Seed URL that initiated the crawl |
+| `depth` | Crawl depth (hops from seed URL) |
+| `frequency` | Number of times the word appears on the page |
+
+**Example entries:**
+```
+build https://go.dev https://go.dev 0 5
+engineer https://go.dev https://go.dev 0 3
+tutorial https://go.dev/learn https://go.dev 1 2
 ```
 
 ## Concurrent Search During Indexing
@@ -319,6 +381,7 @@ go run -race ./cmd/crawler --url https://golang.org --depth 1
 │   │   ├── ratelimiter_test.go      # Rate limiter tests
 │   │   ├── state.go                 # Crawler state machine
 │   │   ├── task.go                  # CrawlTask type
+│   │   ├── pdata.go                 # Raw storage writer (p.data format)
 │   │   ├── wordfreq.go             # Word frequency counter
 │   │   └── wordfreq_test.go        # Word frequency tests
 │   ├── index/
@@ -340,6 +403,9 @@ go run -race ./cmd/crawler --url https://golang.org --depth 1
 │       └── js/
 │           ├── home.js             # Home page stats bar
 │           └── dashboard.js        # Dashboard polling, controls, metrics
+├── data/
+│   └── storage/
+│       └── p.data                  # Raw inverted index (word url origin depth frequency)
 ├── product_prd.md                  # Product Requirement Document
 ├── recommendation.md               # Production roadmap
 ├── ai_stewardship_notes.md         # AI design decisions & justifications (17 Q&A)
