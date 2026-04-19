@@ -1,7 +1,6 @@
-# Google in a Day
+# Google in a Day - Web Crawler
 
-A concurrent web crawler and real-time search engine built in Go using only the standard library. Built for BLG483E — AI-Aided Software Engineering at Istanbul Technical University.
-
+A concurrent web crawler and real-time search engine built in Go using only the standard library.
 ## Features
 
 - **Recursive web crawling** from a seed URL to configurable depth
